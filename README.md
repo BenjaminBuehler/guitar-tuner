@@ -25,10 +25,8 @@ The application runs entirely in the browser and can be hosted for free using Gi
 ## Live Demo
 
 ```text
-https://YOUR-USERNAME.github.io/guitar-tuner/
+https://benjaminbuehler.github.io/guitar-tuner/
 ```
-
-Replace `YOUR-USERNAME` with your GitHub username after enabling GitHub Pages.
 
 ## How to Use
 

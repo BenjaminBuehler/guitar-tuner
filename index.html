@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      background:
+        radial-gradient(circle at top, #233554 0, #0f172a 55%, #020617 100%);
+      color: #f8fafc;
+    }
+
+    .app {
+      width: min(520px, 100%);
+      padding: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      background: rgba(15, 23, 42, 0.92);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      margin: 0 0 24px;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .note {
+      min-height: 112px;
+      font-size: 92px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -4px;
+    }
+
+    .frequency {
+      min-height: 26px;
+      margin-top: 6px;
+      color: #cbd5e1;
+      font-size: 19px;
+    }
+
+    .tuning-status {
+      min-height: 26px;
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .meter-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 24px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .meter {
+      position: relative;
+      height: 54px;
+      margin-top: 7px;
+      overflow: hidden;
+      border-radius: 10px;
+      background:
+        linear-gradient(90deg,
+          #7f1d1d 0%,
+          #ca8a04 30%,
+          #15803d 46%,
+          #15803d 54%,
+          #ca8a04 70%,
+          #7f1d1d 100%);
+    }
+
+    .meter::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.75);
+      transform: translateX(-50%);
+    }
+
+    .needle {
+      position: absolute;
+      top: 5px;
+      bottom: 5px;
+      left: 50%;
+      z-index: 2;
+      width: 5px;
+      border-radius: 10px;
+      background: white;
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+      transform: translateX(-50%);
+      transition: left 90ms linear;
+    }
+
+    .cents {
+      min-height: 24px;
+      margin-top: 12px;
+      color: #cbd5e1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 24px;
+    }
+
+    button {
+      min-width: 130px;
+      padding: 12px 18px;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    #startButton {
+      background: #22c55e;
+      color: #052e16;
+    }
+
+    #startButton:hover {
+      background: #4ade80;
+    }
+
+    #stopButton {
+      background: #334155;
+      color: #f8fafc;
+    }
+
+    #stopButton:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .calibration {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      margin-top: 22px;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    .calibration input {
+      width: 90px;
+      padding: 7px;
+      border: 1px solid #475569;
+      border-radius: 7px;
+      background: #0f172a;
+      color: white;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .standard-tuning {
+      margin-top: 22px;
+      padding: 14px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .standard-tuning strong {
+      color: #e2e8f0;
+    }
+
+    .message {
+      min-height: 40px;
+      margin-top: 18px;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .good {
+      color: #4ade80;
+    }
+
+    .warning {
+      color: #facc15;
+    }
+
+    .bad {
+      color: #f87171;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <h1>Guitar Tuner</h1>
+    <p class="subtitle">Browser-based pitch detection</p>
+
+    <div id="note" class="note">--</div>
+    <div id="frequency" class="frequency">Press Start Tuner</div>
+    <div id="tuningStatus" class="tuning-status"></div>
+
+    <div class="meter-labels">
+      <span>♭ Flat</span>
+      <span>In tune</span>
+      <span>Sharp ♯</span>
+    </div>
+
+    <div class="meter">
+      <div id="needle" class="needle"></div>
+    </div>
+
+    <div id="cents" class="cents">0 cents</div>
+
+    <div class="controls">
+      <button id="startButton" type="button">Start Tuner</button>
+      <button id="stopButton" type="button" disabled>Stop</button>
+    </div>
+
+    <div class="calibration">
+      <label for="referencePitch">Reference A4</label>
+      <input
+        id="referencePitch"
+        type="number"
+        min="430"
+        max="450"
+        step="1"
+        value="440"
+      >
+      <span>Hz</span>
+    </div>
+
+    <div class="standard-tuning">
+      Standard guitar tuning:
+      <strong>E2 · A2 · D3 · G3 · B3 · E4</strong>
+    </div>
+
+    <div id="message" class="message">
+      Microphone audio is processed locally and is not uploaded.
+    </div>
+  </main>
+
+  <script>
+    const noteNames = [
+      'C', 'C♯', 'D', 'D♯', 'E', 'F',
+      'F♯', 'G', 'G♯', 'A', 'A♯', 'B'
+    ];
+
+    const noteElement = document.getElementById('note');
+    const frequencyElement = document.getElementById('frequency');
+    const tuningStatusElement = document.getElementById('tuningStatus');
+    const centsElement = document.getElementById('cents');
+    const needleElement = document.getElementById('needle');
+    const messageElement = document.getElementById('message');
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const referencePitchInput = document.getElementById('referencePitch');
+
+    let audioContext = null;
+    let analyser = null;
+    let microphoneSource = null;
+    let microphoneStream = null;
+    let sampleBuffer = null;
+    let analysisTimer = null;
+    let recentFrequencies = [];
+    let missedReadings = 0;
+
+    startButton.addEventListener('click', startTuner);
+    stopButton.addEventListener('click', stopTuner);
+
+
+    async function startTuner() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError(
+          'This browser does not support microphone access through getUserMedia().'
+        );
+        return;
+      }
+
+      startButton.disabled = true;
+      messageElement.className = 'message';
+      messageElement.textContent = 'Requesting microphone permission...';
+
+      try {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1
+          },
+          video: false
+        });
+
+        audioContext = new (
+          window.AudioContext || window.webkitAudioContext
+        )();
+
+        await audioContext.resume();
+
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0;
+
+        microphoneSource =
+          audioContext.createMediaStreamSource(microphoneStream);
+
+        microphoneSource.connect(analyser);
+
+        // Do not connect the analyser to audioContext.destination.
+        // That would play the microphone through the speakers and create
+        // feedback.
+
+        sampleBuffer = new Float32Array(analyser.fftSize);
+        recentFrequencies = [];
+        missedReadings = 0;
+
+        stopButton.disabled = false;
+        messageElement.textContent =
+          'Listening. Play one string at a time near the microphone.';
+
+        analysisTimer = window.setInterval(analyzeAudio, 100);
+      } catch (error) {
+        console.error(error);
+        await cleanUpAudio();
+
+        startButton.disabled = false;
+        stopButton.disabled = true;
+
+        let message = 'Microphone access failed.';
+
+        if (error.name === 'NotAllowedError') {
+          message +=
+            ' Permission was denied or the Apps Script iframe was blocked by the browser.';
+        } else if (error.name === 'NotFoundError') {
+          message += ' No microphone was found.';
+        } else if (error.message) {
+          message += ' ' + error.message;
+        }
+
+        showError(message);
+      }
+    }
+
+    async function stopTuner() {
+      await cleanUpAudio();
+
+      startButton.disabled = false;
+      stopButton.disabled = true;
+
+      noteElement.textContent = '--';
+      frequencyElement.textContent = 'Tuner stopped';
+      tuningStatusElement.textContent = '';
+      tuningStatusElement.className = 'tuning-status';
+      centsElement.textContent = '0 cents';
+      needleElement.style.left = '50%';
+
+      messageElement.className = 'message';
+      messageElement.textContent =
+        'Microphone audio is processed locally and is not uploaded.';
+    }
+
+    async function cleanUpAudio() {
+      if (analysisTimer !== null) {
+        clearInterval(analysisTimer);
+        analysisTimer = null;
+      }
+
+      if (microphoneSource) {
+        try {
+          microphoneSource.disconnect();
+        } catch (error) {
+          console.warn(error);
+        }
+        microphoneSource = null;
+      }
+
+      if (microphoneStream) {
+        microphoneStream.getTracks().forEach(function(track) {
+          track.stop();
+        });
+        microphoneStream = null;
+      }
+
+      if (audioContext) {
+        try {
+          await audioContext.close();
+        } catch (error) {
+          console.warn(error);
+        }
+        audioContext = null;
+      }
+
+      analyser = null;
+      sampleBuffer = null;
+      recentFrequencies = [];
+    }
+
+    function analyzeAudio() {
+      if (!analyser || !audioContext || !sampleBuffer) {
+        return;
+      }
+
+      analyser.getFloatTimeDomainData(sampleBuffer);
+
+      const frequency = detectPitch(
+        sampleBuffer,
+        audioContext.sampleRate,
+        65,
+        1200
+      );
+
+      if (!frequency) {
+        missedReadings++;
+
+        if (missedReadings >= 5) {
+          showNoSignal();
+        }
+
+        return;
+      }
+
+      missedReadings = 0;
+
+      /*
+       * Clear the smoothing window if the new reading is substantially
+       * different. This lets the display react faster when another string
+       * is played.
+       */
+      if (
+        recentFrequencies.length &&
+        Math.abs(
+          frequency -
+          recentFrequencies[recentFrequencies.length - 1]
+        ) / frequency > 0.10
+      ) {
+        recentFrequencies = [];
+      }
+
+      recentFrequencies.push(frequency);
+
+      if (recentFrequencies.length > 5) {
+        recentFrequencies.shift();
+      }
+
+      const smoothedFrequency = median(recentFrequencies);
+      displayPitch(smoothedFrequency);
+    }
+
+    /**
+     * YIN-style pitch detection.
+     *
+     * Returns a frequency in Hz, or null when no sufficiently clear pitch
+     * is found.
+     */
+    function detectPitch(buffer, sampleRate, minimumFrequency, maximumFrequency) {
+      let sumSquares = 0;
+
+      for (let i = 0; i < buffer.length; i++) {
+        sumSquares += buffer[i] * buffer[i];
+      }
+
+      const rms = Math.sqrt(sumSquares / buffer.length);
+
+      // Reject silence and very weak background noise.
+      if (rms < 0.01) {
+        return null;
+      }
+
+      const halfLength = Math.floor(buffer.length / 2);
+      const minimumTau = Math.max(
+        2,
+        Math.floor(sampleRate / maximumFrequency)
+      );
+      const maximumTau = Math.min(
+        halfLength - 1,
+        Math.floor(sampleRate / minimumFrequency)
+      );
+
+      const yin = new Float32Array(maximumTau + 1);
+
+      /*
+       * Difference function.
+       */
+      for (let tau = minimumTau; tau <= maximumTau; tau++) {
+        let difference = 0;
+
+        for (let i = 0; i < halfLength; i++) {
+          const delta = buffer[i] - buffer[i + tau];
+          difference += delta * delta;
+        }
+
+        yin[tau] = difference;
+      }
+
+      /*
+       * Cumulative mean normalized difference.
+       */
+      let runningSum = 0;
+
+      for (let tau = minimumTau; tau <= maximumTau; tau++) {
+        runningSum += yin[tau];
+
+        yin[tau] = runningSum === 0
+          ? 1
+          : yin[tau] * tau / runningSum;
+      }
+
+      const threshold = 0.12;
+      let selectedTau = -1;
+
+      for (let tau = minimumTau; tau < maximumTau; tau++) {
+        if (yin[tau] < threshold) {
+          while (
+            tau + 1 <= maximumTau &&
+            yin[tau + 1] < yin[tau]
+          ) {
+            tau++;
+          }
+
+          selectedTau = tau;
+          break;
+        }
+      }
+
+      if (selectedTau === -1) {
+        return null;
+      }
+
+      /*
+       * Parabolic interpolation improves the result beyond integer sample
+       * resolution.
+       */
+      let betterTau = selectedTau;
+
+      if (
+        selectedTau > minimumTau &&
+        selectedTau < maximumTau
+      ) {
+        const previous = yin[selectedTau - 1];
+        const current = yin[selectedTau];
+        const next = yin[selectedTau + 1];
+        const denominator =
+          2 * (previous - 2 * current + next);
+
+        if (denominator !== 0) {
+          betterTau += (previous - next) / denominator;
+        }
+      }
+
+      const frequency = sampleRate / betterTau;
+
+      if (
+        !Number.isFinite(frequency) ||
+        frequency < minimumFrequency ||
+        frequency > maximumFrequency
+      ) {
+        return null;
+      }
+
+      return frequency;
+    }
+
+    function displayPitch(frequency) {
+      const referencePitch =
+        Number(referencePitchInput.value) || 440;
+
+      /*
+       * MIDI 69 is A4. The formula works with any reference pitch selected
+       * by the user.
+       */
+      const exactMidi =
+        69 + 12 * Math.log2(frequency / referencePitch);
+
+      const midiNote = Math.round(exactMidi);
+      const noteIndex = positiveModulo(midiNote, 12);
+      const octave = Math.floor(midiNote / 12) - 1;
+      const noteName = noteNames[noteIndex] + octave;
+
+      const targetFrequency =
+        referencePitch * Math.pow(2, (midiNote - 69) / 12);
+
+      const cents =
+        1200 * Math.log2(frequency / targetFrequency);
+
+      noteElement.textContent = noteName;
+      frequencyElement.textContent =
+        frequency.toFixed(1) +
+        ' Hz · target ' +
+        targetFrequency.toFixed(1) +
+        ' Hz';
+
+      const roundedCents = Math.round(cents);
+      const sign = roundedCents > 0 ? '+' : '';
+
+      centsElement.textContent =
+        sign + roundedCents + ' cents';
+
+      const clampedCents = Math.max(-50, Math.min(50, cents));
+      needleElement.style.left = (50 + clampedCents) + '%';
+
+      const absoluteCents = Math.abs(cents);
+
+      if (absoluteCents <= 5) {
+        tuningStatusElement.textContent = 'In tune';
+        tuningStatusElement.className = 'tuning-status good';
+      } else if (cents < 0) {
+        tuningStatusElement.textContent = 'Tune up';
+        tuningStatusElement.className =
+          absoluteCents <= 15
+            ? 'tuning-status warning'
+            : 'tuning-status bad';
+      } else {
+        tuningStatusElement.textContent = 'Tune down';
+        tuningStatusElement.className =
+          absoluteCents <= 15
+            ? 'tuning-status warning'
+            : 'tuning-status bad';
+      }
+    }
+
+    function showNoSignal() {
+      recentFrequencies = [];
+
+      noteElement.textContent = '--';
+      frequencyElement.textContent = 'No stable pitch detected';
+      tuningStatusElement.textContent = 'Play one string';
+      tuningStatusElement.className = 'tuning-status';
+      centsElement.textContent = '0 cents';
+      needleElement.style.left = '50%';
+    }
+
+    function showError(message) {
+      messageElement.className = 'message bad';
+      messageElement.textContent = message;
+    }
+
+    function median(values) {
+      if (!values.length) {
+        return 0;
+      }
+
+      const sorted = values.slice().sort(function(a, b) {
+        return a - b;
+      });
+
+      const middle = Math.floor(sorted.length / 2);
+
+      if (sorted.length % 2) {
+        return sorted[middle];
+      }
+
+      return (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    function positiveModulo(value, divisor) {
+      return ((value % divisor) + divisor) % divisor;
+    }
+  </script>
+</body>
+
+</html>

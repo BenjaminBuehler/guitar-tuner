@@ -921,8 +921,17 @@ function midiToDisplayName(midiNote) {
 }
 
 function populateTuningSelector() {
-  tuningSelect.textContent = '';
+  if (!tuningSelect) {
+    console.error(
+      'The element <select id="tuningSelect"> was not found.'
+    );
+    return;
+  }
+
+  tuningSelect.replaceChildren();
   tuningsById.clear();
+
+  const fragment = document.createDocumentFragment();
 
   tuningGroups.forEach(function(group) {
     const optgroup = document.createElement('optgroup');
@@ -938,10 +947,12 @@ function populateTuningSelector() {
       optgroup.appendChild(option);
     });
 
-    tuningSelect.appendChild(optgroup);
+    fragment.appendChild(optgroup);
   });
 
+  tuningSelect.appendChild(fragment);
   tuningSelect.value = 'standard';
+
   renderSelectedTuning();
 }
 
@@ -1006,15 +1017,7 @@ function renderCustomTuning() {
   }
 }
 
-tuningSelect.addEventListener(
-  'change',
-  renderSelectedTuning
-);
 
-customTuningInput.addEventListener(
-  'input',
-  renderCustomTuning
-);
   async function startTuner() {
     if (
       !navigator.mediaDevices ||
@@ -1524,6 +1527,42 @@ customTuningInput.addEventListener(
   function positiveModulo(value, divisor) {
     return ((value % divisor) + divisor) % divisor;
   }
+
+    function initializeTuningControls() {
+  if (
+    !tuningSelect ||
+    !customTuningInput ||
+    !selectedTuningName ||
+    !selectedTuningNotes
+  ) {
+    console.error(
+      'One or more tuning control elements are missing from the HTML.'
+    );
+    return;
+  }
+
+  tuningSelect.addEventListener(
+    'change',
+    renderSelectedTuning
+  );
+
+  customTuningInput.addEventListener(
+    'input',
+    renderCustomTuning
+  );
+
+  populateTuningSelector();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener(
+    'DOMContentLoaded',
+    initializeTuningControls,
+    { once: true }
+  );
+} else {
+  initializeTuningControls();
+}
 </script>
 </body>
 

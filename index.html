@@ -3,7 +3,10 @@
 
 <head>
   <base target="_top">
-
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1, viewport-fit=cover"
+>
   <style>
     :root {
       color-scheme: dark;
@@ -14,17 +17,24 @@
       box-sizing: border-box;
     }
 
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
-      background:
-        radial-gradient(circle at top, #233554 0, #0f172a 55%, #020617 100%);
-      color: #f8fafc;
-    }
+   body {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top, #233554 0, #0f172a 55%, #020617 100%);
+  color: #f8fafc;
+}
 
     .app {
       width: min(520px, 100%);
@@ -262,6 +272,102 @@
     .bad {
       color: #f87171;
     }
+@media (max-width: 640px) {
+  body {
+    display: block;
+    padding: 0;
+    background: #0f172a;
+  }
+
+  .app {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding:
+      max(20px, env(safe-area-inset-top))
+      max(18px, env(safe-area-inset-right))
+      max(24px, env(safe-area-inset-bottom))
+      max(18px, env(safe-area-inset-left));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  h1 {
+    font-size: clamp(24px, 7vw, 30px);
+  }
+
+  .subtitle {
+    margin-bottom: 18px;
+  }
+
+  .note {
+    min-height: 92px;
+    font-size: clamp(68px, 24vw, 92px);
+  }
+
+  .frequency {
+    font-size: clamp(15px, 4.5vw, 19px);
+  }
+
+  .controls {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .controls button {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+  }
+
+  .calibration {
+    justify-content: space-between;
+  }
+
+  /*
+   * A font size of at least 16px prevents iOS Safari from zooming
+   * the page when an input or select receives focus.
+   */
+  .calibration input,
+  .calibration select,
+  .tuning-picker input,
+  .tuning-picker select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .meter {
+    height: 60px;
+  }
+}
+@media (max-height: 700px) and (max-width: 900px) {
+  .app {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .subtitle {
+    margin-bottom: 10px;
+  }
+
+  .note {
+    min-height: 68px;
+    font-size: 64px;
+  }
+
+  .meter-labels {
+    margin-top: 14px;
+  }
+
+  .controls,
+  .calibration,
+  .tuning-picker,
+  .message {
+    margin-top: 14px;
+  }
+}
+    
   </style>
 </head>
 

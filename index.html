@@ -161,6 +161,21 @@
       opacity: 0.45;
     }
 
+.calibration {
+  flex-wrap: wrap;
+}
+
+.calibration select {
+  min-width: 140px;
+  padding: 7px;
+  border: 1px solid #475569;
+  border-radius: 7px;
+  background: #0f172a;
+  color: white;
+  font-size: 14px;
+  text-align: center;
+}
+    
     .calibration {
       display: flex;
       gap: 12px;
@@ -182,18 +197,51 @@
       text-align: center;
     }
 
-    .standard-tuning {
-      margin-top: 22px;
-      padding: 14px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.05);
-      color: #94a3b8;
-      font-size: 13px;
-    }
+ .tuning-picker {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+  text-align: left;
+}
 
-    .standard-tuning strong {
-      color: #e2e8f0;
-    }
+.tuning-picker > label {
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tuning-picker select,
+.tuning-picker input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.tuning-picker select:focus,
+.tuning-picker input:focus {
+  border-color: #22c55e;
+  outline: 2px solid rgba(34, 197, 94, 0.18);
+}
+
+.selected-tuning {
+  min-height: 50px;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.selected-tuning strong {
+  margin-left: 4px;
+  color: #e2e8f0;
+}
 
     .message {
       min-height: 40px;
@@ -220,7 +268,7 @@
 <body>
   <main class="app">
     <h1>Guitar Tuner</h1>
-    <p class="subtitle">Browser-based pitch detection</p>
+    <p class="subtitle">Chromatic pitch detection from A0 to C8</p>
 
     <div id="note" class="note">--</div>
     <div id="frequency" class="frequency">Press Start Tuner</div>
@@ -243,23 +291,45 @@
       <button id="stopButton" type="button" disabled>Stop</button>
     </div>
 
-    <div class="calibration">
-      <label for="referencePitch">Reference A4</label>
-      <input
-        id="referencePitch"
-        type="number"
-        min="430"
-        max="450"
-        step="1"
-        value="440"
-      >
-      <span>Hz</span>
-    </div>
+   <div class="calibration">
+  <label for="referencePitch">Reference A4</label>
+  <input
+    id="referencePitch"
+    type="number"
+    min="430"
+    max="450"
+    step="1"
+    value="440"
+  >
+  <span>Hz</span>
 
-    <div class="standard-tuning">
-      Standard guitar tuning:
-      <strong>E2 · A2 · D3 · G3 · B3 · E4</strong>
-    </div>
+  <label for="notation">Notation</label>
+  <select id="notation">
+    <option value="sharp">Sharps (♯)</option>
+    <option value="flat">Flats (♭)</option>
+  </select>
+</div>
+
+  <div class="tuning-picker">
+  <label for="tuningSelect">Instrument tuning</label>
+
+  <select id="tuningSelect"></select>
+
+  <input
+    id="customTuning"
+    type="text"
+    placeholder="Example: E2 A2 D3 G3 B3 E4"
+    aria-label="Custom tuning notes"
+    hidden
+  >
+
+  <div id="selectedTuning" class="selected-tuning">
+    <span id="selectedTuningName">Standard:</span>
+    <strong id="selectedTuningNotes">
+      E2 · A2 · D3 · G3 · B3 · E4
+    </strong>
+  </div>
+</div>
 
     <div id="message" class="message">
       Microphone audio is processed locally and is not uploaded.
@@ -267,48 +337,703 @@
   </main>
 
   <script>
-    const noteNames = [
-      'C', 'C♯', 'D', 'D♯', 'E', 'F',
-      'F♯', 'G', 'G♯', 'A', 'A♯', 'B'
-    ];
+  const sharpNoteNames = [
+    'C', 'C♯', 'D', 'D♯', 'E', 'F',
+    'F♯', 'G', 'G♯', 'A', 'A♯', 'B'
+  ];
 
-    const noteElement = document.getElementById('note');
-    const frequencyElement = document.getElementById('frequency');
-    const tuningStatusElement = document.getElementById('tuningStatus');
-    const centsElement = document.getElementById('cents');
-    const needleElement = document.getElementById('needle');
-    const messageElement = document.getElementById('message');
-    const startButton = document.getElementById('startButton');
-    const stopButton = document.getElementById('stopButton');
-    const referencePitchInput = document.getElementById('referencePitch');
+  const flatNoteNames = [
+    'C', 'D♭', 'D', 'E♭', 'E', 'F',
+    'G♭', 'G', 'A♭', 'A', 'B♭', 'B'
+  ];
 
-    let audioContext = null;
-    let analyser = null;
-    let microphoneSource = null;
-    let microphoneStream = null;
-    let sampleBuffer = null;
-    let analysisTimer = null;
-    let recentFrequencies = [];
-    let missedReadings = 0;
+  // MIDI note 21 is A0 and MIDI note 108 is C8.
+  const MIN_MIDI_NOTE = 21;
+  const MAX_MIDI_NOTE = 108;
 
-    startButton.addEventListener('click', startTuner);
-    stopButton.addEventListener('click', stopTuner);
+  const noteElement = document.getElementById('note');
+  const frequencyElement = document.getElementById('frequency');
+  const tuningStatusElement =
+    document.getElementById('tuningStatus');
+  const centsElement = document.getElementById('cents');
+  const needleElement = document.getElementById('needle');
+  const messageElement = document.getElementById('message');
+  const startButton = document.getElementById('startButton');
+  const stopButton = document.getElementById('stopButton');
+  const referencePitchInput =
+    document.getElementById('referencePitch');
+  const notationSelect = document.getElementById('notation');
+    const tuningSelect = document.getElementById('tuningSelect');
+const customTuningInput = document.getElementById('customTuning');
+const selectedTuningName =
+  document.getElementById('selectedTuningName');
+const selectedTuningNotes =
+  document.getElementById('selectedTuningNotes');
 
+  let audioContext = null;
+  let analyser = null;
+  let microphoneSource = null;
+  let microphoneStream = null;
+  let sampleBuffer = null;
+  let analysisTimer = null;
+  let recentFrequencies = [];
+  let missedReadings = 0;
+  let lastDisplayedFrequency = null;
 
-    async function startTuner() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showError(
-          'This browser does not support microphone access through getUserMedia().'
-        );
-        return;
+    
+
+  startButton.addEventListener('click', startTuner);
+  stopButton.addEventListener('click', stopTuner);
+
+notationSelect.addEventListener('change', function() {
+  if (lastDisplayedFrequency !== null) {
+    displayPitch(lastDisplayedFrequency);
+  }
+
+  renderSelectedTuning();
+});
+
+  referencePitchInput.addEventListener('change', refreshDisplay);
+  referencePitchInput.addEventListener('input', refreshDisplay);
+
+  function refreshDisplay() {
+    if (lastDisplayedFrequency !== null) {
+      displayPitch(lastDisplayedFrequency);
+    }
+  }
+const pitchClassNumbers = {
+  C: 0,
+  'C#': 1,
+  Db: 1,
+  D: 2,
+  'D#': 3,
+  Eb: 3,
+  E: 4,
+  F: 5,
+  'F#': 6,
+  Gb: 6,
+  G: 7,
+  'G#': 8,
+  Ab: 8,
+  A: 9,
+  'A#': 10,
+  Bb: 10,
+  B: 11
+};
+
+const displaySharpNames = [
+  'C', 'C♯', 'D', 'D♯', 'E', 'F',
+  'F♯', 'G', 'G♯', 'A', 'A♯', 'B'
+];
+
+const displayFlatNames = [
+  'C', 'D♭', 'D', 'E♭', 'E', 'F',
+  'G♭', 'G', 'A♭', 'A', 'B♭', 'B'
+];
+
+/*
+ * Each tuning is entered without octaves. The helper assigns octaves
+ * from low to high, beginning at the supplied starting octave.
+ *
+ * For example:
+ * E.A.D.G.B.E becomes E2 A2 D3 G3 B3 E4.
+ *
+ * Tunings that begin below C2, such as baritone and A tuning, use
+ * starting octave 1.
+ */
+const tuningGroups = [
+  {
+    label: 'Standard Tunings',
+    tunings: [
+      makeTuning('standard', 'Standard', 'E.A.D.G.B.E'),
+      makeCustomTuning()
+    ]
+  },
+  {
+    label: 'Open Tunings',
+    tunings: [
+      makeTuning('open-c', 'Open C', 'C.G.C.G.C.E'),
+      makeTuning('open-d', 'Open D', 'D.A.D.F#.A.D'),
+      makeTuning('modal-d', 'Modal D', 'D.A.D.G.A.D'),
+      makeTuning(
+        'open-d-minor',
+        'Open D Minor',
+        'D.A.D.F.A.D'
+      ),
+      makeTuning('open-g', 'Open G', 'D.G.D.G.B.D'),
+      makeTuning('modal-g', 'Modal G', 'D.G.D.G.C.D'),
+      makeTuning(
+        'open-g-minor',
+        'Open G Minor',
+        'D.G.D.G.A#.D'
+      ),
+      makeTuning(
+        'open-a-general',
+        'Open A',
+        'E.A.C#.E.A.E'
+      )
+    ]
+  },
+  {
+    label: 'Instrumental Tunings',
+    tunings: [
+      makeTuning('cittern-1', 'Cittern (1)', 'C.F.C.G.C.D'),
+      makeTuning('cittern-2', 'Cittern (2)', 'C.G.C.G.C.G'),
+      makeTuning('dobro', 'Dobro', 'G.B.D.G.B.D'),
+      makeTuning('balalaika', 'Balalaika', 'E.A.D.E.E.A'),
+
+      /*
+       * Lefty is the reverse of standard tuning, so its octaves are
+       * supplied explicitly instead of generated from low to high.
+       */
+      makeExplicitTuning(
+        'lefty',
+        'Lefty',
+        ['E4', 'B3', 'G3', 'D3', 'A2', 'E2']
+      ),
+
+      makeTuning('overtone', 'Overtone', 'C.E.G.A#.C.D'),
+      makeTuning('pentatonic', 'Pentatonic', 'A.C.D.E.G.A')
+    ]
+  },
+  {
+    label: 'Regular Tunings',
+    tunings: [
+      makeTuning(
+        'minor-third',
+        'Minor Third',
+        'C.D#.F#.A.C.D#'
+      ),
+      makeTuning(
+        'major-third',
+        'Major Third',
+        'C.E.G#.C.E.G#'
+      ),
+      makeTuning('all-fourths', 'All Fourths', 'E.A.D.G.C.F'),
+      makeTuning(
+        'aug-fourths',
+        'Aug Fourths',
+        'C.F#.C.F#.C.F#'
+      ),
+      makeTuning(
+        'mandoguitar',
+        'Mandoguitar',
+        'C.G.D.A.E.B'
+      ),
+      makeTuning(
+        'minor-sixth',
+        'Minor Sixth',
+        'C.G#.E.C.G#.E'
+      ),
+      makeTuning(
+        'major-sixth',
+        'Major Sixth',
+        'C.A.F#.D#.C.A'
+      )
+    ]
+  },
+  {
+    label: 'Special Tunings',
+    tunings: [
+      makeTuning('admiral', 'Admiral', 'C.G.D.G.B.C'),
+      makeTuning('buzzard', 'Buzzard', 'C.F.C.G.A#.F'),
+      makeTuning('drop-d', 'Drop D', 'D.A.D.G.B.E'),
+      makeTuning('face', 'Face', 'C.G.D.G.A.D'),
+      makeTuning(
+        'four-and-twenty',
+        'Four & Twenty',
+        'D.A.D.D.A.D'
+      ),
+      makeTuning('hot-type', 'Hot Type', 'A.B.E.F#.A.D'),
+      makeTuning('layover', 'Layover', 'D.A.C.G.C.E'),
+      makeTuning(
+        'magic-farmer',
+        'Magic Farmer',
+        'C.F.C.G.A.E'
+      ),
+      makeTuning('pelican', 'Pelican', 'D.A.D.E.A.D'),
+      makeTuning(
+        'processional',
+        'Processional',
+        'D.G.D.F.A.A#'
+      ),
+      makeTuning(
+        'slow-motion',
+        'Slow Motion',
+        'D.G.D.F.C.D'
+      ),
+      makeTuning('spirit', 'Spirit', 'C#.A.C#.G#.A.E'),
+      makeTuning(
+        'tarboulton',
+        'Tarboulton',
+        'C.A#.C.F.A#.F'
+      ),
+      makeTuning('toulouse', 'Toulouse', 'E.C.D.F.A.D'),
+      makeTuning('triqueen', 'Triqueen', 'D.G.D.F#.A.B')
+    ]
+  },
+  {
+    label: 'Lower Tunings',
+    tunings: [
+      makeTuning(
+        'baritone',
+        'Baritone',
+        'B.E.A.D.F#.B',
+        1
+      ),
+      makeTuning(
+        'a-sharp-tuning',
+        'A♯/B♭ Tuning',
+        'A#.D#.G#.C#.F.A#',
+        1
+      ),
+      makeTuning('d-tuning', 'D Tuning', 'D.G.C.F.A.D'),
+      makeTuning(
+        'd-sharp-tuning',
+        'D♯/E♭ Tuning',
+        'D#.G#.C#.F#.A#.D#'
+      ),
+      makeTuning('c-tuning', 'C Tuning', 'C.F.A#.D#.G.C'),
+      makeTuning(
+        'c-sharp-tuning',
+        'C♯/D♭ Tuning',
+        'C#.F#.B.E.G#.C#'
+      ),
+      makeTuning(
+        'a-tuning',
+        'A Tuning',
+        'A.D.G.C.E.A',
+        1
+      )
+    ]
+  },
+  {
+    label: 'Higher Tunings',
+    tunings: [
+      makeTuning('f-tuning', 'F Tuning', 'F.A#.D#.G#.C.F'),
+      makeTuning(
+        'f-sharp-tuning',
+        'F♯/G♭ Tuning',
+        'F#.B.E.A.C#.F#'
+      )
+    ]
+  },
+  {
+    label: 'Dropped Tunings',
+    tunings: [
+      makeTuning(
+        'drop-c-sharp',
+        'Drop C♯/D♭',
+        'C#.G#.C#.F#.A#.D#'
+      ),
+      makeTuning('drop-c', 'Drop C', 'C.G.C.F.A.D'),
+      makeTuning(
+        'drop-b',
+        'Drop B',
+        'B.F#.B.E.G#.C#',
+        1
+      ),
+      makeTuning(
+        'drop-a-sharp',
+        'Drop A♯/B♭',
+        'A#.F.A#.D#.G.C',
+        1
+      ),
+      makeTuning(
+        'drop-a',
+        'Drop A',
+        'A.E.A.D.F#.B',
+        1
+      )
+    ]
+  },
+  {
+    label: 'Open Tunings — Additional',
+    tunings: [
+      makeTuning(
+        'open-a-alternate',
+        'Open A',
+        'E.A.E.A.C#.E'
+      ),
+      makeTuning('open-e', 'Open E', 'E.B.E.G#.B.E'),
+      makeTuning('open-f', 'Open F', 'F.A.C.F.C.F'),
+      makeTuning(
+        'f-sharp-open',
+        'F-Sharp',
+        'F#.A#.C#.F#.C#.F#'
+      ),
+      makeTuning(
+        'dobro-open-g',
+        'Dobro Open G',
+        'G.B.D.G.B.D'
+      )
+    ]
+  },
+  {
+    label: 'Crossnote Tunings',
+    tunings: [
+      makeTuning(
+        'crossnote-a',
+        'Crossnote A',
+        'E.A.E.A.C.E'
+      ),
+      makeTuning(
+        'crossnote-a2',
+        'Crossnote A2',
+        'E.A.C.E.A.E'
+      ),
+      makeTuning(
+        'crossnote-c',
+        'Crossnote C',
+        'C.G.C.G.C.D#'
+      ),
+      makeTuning(
+        'crossnote-e',
+        'Crossnote E',
+        'E.B.E.G.B.E'
+      ),
+      makeTuning(
+        'crossnote-f',
+        'Crossnote F',
+        'F.G#.C.F.C.F'
+      )
+    ]
+  },
+  {
+    label: 'Modal Tunings',
+    tunings: [
+      makeTuning('asus2', 'Asus2', 'E.A.B.E.A.E'),
+      makeTuning('asus4', 'Asus4', 'E.A.D.E.A.E'),
+      makeTuning('c6', 'C6', 'C.A.C.G.C.E'),
+      makeTuning('open-page', 'Open Page', 'D.G.C.G.C.D'),
+      makeTuning('csus4', 'Csus4', 'C.G.C.G.C.F'),
+      makeTuning('c15', 'C15', 'C.G.D.G.C.D'),
+      makeTuning('dsus4', 'Dsus4', 'D.A.D.G.A.D'),
+      makeTuning('esus2', 'Esus2', 'E.A.E.F#.B.E'),
+      makeTuning('esus4', 'Esus4', 'E.A.E.A.B.E'),
+      makeTuning('g6', 'G6', 'D.G.D.G.B.E'),
+      makeTuning('gsus2', 'Gsus2', 'D.G.D.G.A.D'),
+      makeTuning('e-modal', 'E Modal', 'E.B.E.E.B.E'),
+      makeTuning('g-modal', 'G Modal', 'G.G.D.G.B.D'),
+      makeTuning(
+        'b-modal',
+        'B Modal',
+        'B.F#.C#.F#.B.D#',
+        1
+      )
+    ]
+  },
+  {
+    label: 'Extended Chord Tunings',
+    tunings: [
+      makeTuning(
+        'open-dmaj7',
+        'Open Dmaj7',
+        'D.A.D.F#.A.C#'
+      ),
+      makeTuning(
+        'open-dmin7',
+        'Open Dmin7',
+        'D.A.D.F.A.C'
+      ),
+      makeTuning(
+        'open-dmin-add9',
+        'Open Dmin(add9)',
+        'D.A.D.F.A.E'
+      ),
+      makeTuning(
+        'open-emin7',
+        'Open Emin7',
+        'E.B.D.G.B.E'
+      ),
+      makeTuning('open-g7', 'Open G7', 'D.G.D.G.B.F'),
+      makeTuning(
+        'open-gmaj7',
+        'Open Gmaj7',
+        'D.G.D.F#.B.D'
+      ),
+      makeTuning('modal-g7', 'Modal G7', 'F.G.D.G.C.D'),
+      makeTuning('open-g13', 'Open G13', 'F.G.D.G.B.E'),
+      makeTuning(
+        'open-cmin7',
+        'Open Cmin7',
+        'C.G.C.G.A#.D#'
+      ),
+      makeTuning(
+        'open-cmaj7',
+        'Open Cmaj7',
+        'C.G.C.G.B.E'
+      ),
+      makeTuning(
+        'open-c6-9',
+        'Open C6/9',
+        'C.G.C.E.A.C'
+      ),
+      makeTuning(
+        'open-cmaj9',
+        'Open Cmaj9',
+        'C.G.D.G.B.E'
+      ),
+      makeTuning(
+        'csus2add11',
+        'Csus2add11',
+        'C.G.D.F.C.F'
+      ),
+      makeTuning(
+        'golden-blue',
+        'Golden Blue',
+        'C.C.C.C.A#.F'
+      )
+    ]
+  },
+  {
+    label: 'Miscellaneous Tunings',
+    tunings: [
+      makeTuning(
+        'cooder',
+        'Cooder',
+        'C#.G#.C#.F.G#.C#'
+      ),
+      makeTuning('collins', 'Collins', 'F.C.F.G#.C.F'),
+      makeTuning('cadgbe', 'CADGBE', 'C.A.D.G.B.E'),
+      makeTuning('daeaee', 'DAEAEE', 'D.A.E.A.E.E')
+    ]
+  }
+];
+
+const tuningsById = new Map();
+
+function makeTuning(
+  id,
+  name,
+  noteSequence,
+  startingOctave = 2
+) {
+  return {
+    id,
+    name,
+    notes: createAscendingMidiNotes(
+      noteSequence.split('.'),
+      startingOctave
+    )
+  };
+}
+
+function makeExplicitTuning(id, name, notes) {
+  return {
+    id,
+    name,
+    notes: notes.map(noteNameToMidi)
+  };
+}
+
+function makeCustomTuning() {
+  return {
+    id: 'custom',
+    name: 'Custom',
+    notes: [],
+    custom: true
+  };
+}
+
+/*
+ * Assign octaves so each string is at least as high as the previous
+ * string. Equal notes remain in the same octave, which supports
+ * tunings containing unison strings.
+ */
+function createAscendingMidiNotes(
+  noteNames,
+  startingOctave
+) {
+  const notes = [];
+  let previousMidi = null;
+
+  noteNames.forEach(function(noteName, index) {
+    const normalizedName = normalizePitchClass(noteName);
+
+    if (!(normalizedName in pitchClassNumbers)) {
+      throw new Error('Unknown pitch class: ' + noteName);
+    }
+
+    let octave = startingOctave;
+    let midi =
+      12 * (octave + 1) +
+      pitchClassNumbers[normalizedName];
+
+    if (index > 0) {
+      while (midi < previousMidi) {
+        octave++;
+        midi =
+          12 * (octave + 1) +
+          pitchClassNumbers[normalizedName];
       }
+    }
 
-      startButton.disabled = true;
-      messageElement.className = 'message';
-      messageElement.textContent = 'Requesting microphone permission...';
+    notes.push(midi);
+    previousMidi = midi;
+  });
 
-      try {
-        microphoneStream = await navigator.mediaDevices.getUserMedia({
+  return notes;
+}
+
+function normalizePitchClass(noteName) {
+  return noteName
+    .trim()
+    .replace(/♯/g, '#')
+    .replace(/♭/g, 'b');
+}
+
+function noteNameToMidi(noteName) {
+  const normalized = normalizePitchClass(noteName);
+
+  const match = normalized.match(
+    /^([A-Ga-g])([#b]?)(-?\d+)$/
+  );
+
+  if (!match) {
+    throw new Error('Invalid note: ' + noteName);
+  }
+
+  const letter = match[1].toUpperCase();
+  const accidental = match[2];
+  const octave = Number(match[3]);
+  const pitchClass = letter + accidental;
+
+  if (!(pitchClass in pitchClassNumbers)) {
+    throw new Error('Invalid note: ' + noteName);
+  }
+
+  return (
+    12 * (octave + 1) +
+    pitchClassNumbers[pitchClass]
+  );
+}
+
+function midiToDisplayName(midiNote) {
+  const pitchClass = positiveModulo(midiNote, 12);
+  const octave = Math.floor(midiNote / 12) - 1;
+
+  const names = notationSelect.value === 'flat'
+    ? displayFlatNames
+    : displaySharpNames;
+
+  return names[pitchClass] + octave;
+}
+
+function populateTuningSelector() {
+  tuningSelect.textContent = '';
+  tuningsById.clear();
+
+  tuningGroups.forEach(function(group) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.label;
+
+    group.tunings.forEach(function(tuning) {
+      tuningsById.set(tuning.id, tuning);
+
+      const option = document.createElement('option');
+      option.value = tuning.id;
+      option.textContent = '♬ ' + tuning.name;
+
+      optgroup.appendChild(option);
+    });
+
+    tuningSelect.appendChild(optgroup);
+  });
+
+  tuningSelect.value = 'standard';
+  renderSelectedTuning();
+}
+
+function renderSelectedTuning() {
+  const tuning = tuningsById.get(tuningSelect.value);
+
+  if (!tuning) {
+    return;
+  }
+
+  const isCustom = Boolean(tuning.custom);
+
+  customTuningInput.hidden = !isCustom;
+  selectedTuningName.textContent = tuning.name + ':';
+
+  if (isCustom) {
+    renderCustomTuning();
+    return;
+  }
+
+  selectedTuningNotes.textContent = tuning.notes
+    .map(midiToDisplayName)
+    .join(' · ');
+}
+
+function renderCustomTuning() {
+  const text = customTuningInput.value.trim();
+
+  if (!text) {
+    selectedTuningNotes.textContent =
+      'Enter octave-qualified notes above';
+    return;
+  }
+
+  const noteStrings = text
+    .replace(/[,.]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  try {
+    const midiNotes = noteStrings.map(noteNameToMidi);
+
+    const outOfRange = midiNotes.some(function(midiNote) {
+      return (
+        midiNote < MIN_MIDI_NOTE ||
+        midiNote > MAX_MIDI_NOTE
+      );
+    });
+
+    if (outOfRange) {
+      selectedTuningNotes.textContent =
+        'Custom notes must be between A0 and C8';
+      return;
+    }
+
+    selectedTuningNotes.textContent = midiNotes
+      .map(midiToDisplayName)
+      .join(' · ');
+  } catch (error) {
+    selectedTuningNotes.textContent =
+      'Use notes such as E2 A2 D3 G3 B3 E4';
+  }
+}
+
+tuningSelect.addEventListener(
+  'change',
+  renderSelectedTuning
+);
+
+customTuningInput.addEventListener(
+  'input',
+  renderCustomTuning
+);
+  async function startTuner() {
+    if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      showError(
+        'This browser does not support microphone access through getUserMedia().'
+      );
+      return;
+    }
+
+    startButton.disabled = true;
+    messageElement.className = 'message';
+    messageElement.textContent =
+      'Requesting microphone permission...';
+
+    try {
+      microphoneStream =
+        await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
@@ -318,371 +1043,488 @@
           video: false
         });
 
-        audioContext = new (
-          window.AudioContext || window.webkitAudioContext
-        )();
+      audioContext = new (
+        window.AudioContext || window.webkitAudioContext
+      )();
 
-        await audioContext.resume();
+      await audioContext.resume();
 
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 4096;
-        analyser.smoothingTimeConstant = 0;
+      analyser = audioContext.createAnalyser();
 
-        microphoneSource =
-          audioContext.createMediaStreamSource(microphoneStream);
+      /*
+       * An 8192-sample window is large enough to analyze the long
+       * wavelength of A0 while retaining enough resolution for C8.
+       */
+      analyser.fftSize = 8192;
+      analyser.smoothingTimeConstant = 0;
 
-        microphoneSource.connect(analyser);
+      microphoneSource =
+        audioContext.createMediaStreamSource(microphoneStream);
 
-        // Do not connect the analyser to audioContext.destination.
-        // That would play the microphone through the speakers and create
-        // feedback.
+      microphoneSource.connect(analyser);
 
-        sampleBuffer = new Float32Array(analyser.fftSize);
-        recentFrequencies = [];
-        missedReadings = 0;
+      // Do not connect to audioContext.destination because doing so
+      // would play the microphone through the speakers.
+      sampleBuffer = new Float32Array(analyser.fftSize);
 
-        stopButton.disabled = false;
-        messageElement.textContent =
-          'Listening. Play one string at a time near the microphone.';
+      recentFrequencies = [];
+      missedReadings = 0;
+      lastDisplayedFrequency = null;
 
-        analysisTimer = window.setInterval(analyzeAudio, 100);
-      } catch (error) {
-        console.error(error);
-        await cleanUpAudio();
+      stopButton.disabled = false;
+      messageElement.textContent =
+        'Listening for notes from A0 to C8.';
 
-        startButton.disabled = false;
-        stopButton.disabled = true;
-
-        let message = 'Microphone access failed.';
-
-        if (error.name === 'NotAllowedError') {
-          message +=
-            ' Permission was denied or the Apps Script iframe was blocked by the browser.';
-        } else if (error.name === 'NotFoundError') {
-          message += ' No microphone was found.';
-        } else if (error.message) {
-          message += ' ' + error.message;
-        }
-
-        showError(message);
-      }
-    }
-
-    async function stopTuner() {
+      analysisTimer = window.setInterval(analyzeAudio, 100);
+    } catch (error) {
+      console.error(error);
       await cleanUpAudio();
 
       startButton.disabled = false;
       stopButton.disabled = true;
 
-      noteElement.textContent = '--';
-      frequencyElement.textContent = 'Tuner stopped';
-      tuningStatusElement.textContent = '';
-      tuningStatusElement.className = 'tuning-status';
-      centsElement.textContent = '0 cents';
-      needleElement.style.left = '50%';
+      let message = 'Microphone access failed.';
 
-      messageElement.className = 'message';
-      messageElement.textContent =
-        'Microphone audio is processed locally and is not uploaded.';
+      if (error.name === 'NotAllowedError') {
+        message +=
+          ' Permission was denied or microphone access was blocked by the browser.';
+      } else if (error.name === 'NotFoundError') {
+        message += ' No microphone was found.';
+      } else if (error.message) {
+        message += ' ' + error.message;
+      }
+
+      showError(message);
+    }
+  }
+
+  async function stopTuner() {
+    await cleanUpAudio();
+
+    startButton.disabled = false;
+    stopButton.disabled = true;
+
+    resetPitchDisplay('Tuner stopped');
+
+    messageElement.className = 'message';
+    messageElement.textContent =
+      'Microphone audio is processed locally and is not uploaded.';
+  }
+
+  async function cleanUpAudio() {
+    if (analysisTimer !== null) {
+      clearInterval(analysisTimer);
+      analysisTimer = null;
     }
 
-    async function cleanUpAudio() {
-      if (analysisTimer !== null) {
-        clearInterval(analysisTimer);
-        analysisTimer = null;
+    if (microphoneSource) {
+      try {
+        microphoneSource.disconnect();
+      } catch (error) {
+        console.warn(error);
       }
 
-      if (microphoneSource) {
-        try {
-          microphoneSource.disconnect();
-        } catch (error) {
-          console.warn(error);
-        }
-        microphoneSource = null;
-      }
-
-      if (microphoneStream) {
-        microphoneStream.getTracks().forEach(function(track) {
-          track.stop();
-        });
-        microphoneStream = null;
-      }
-
-      if (audioContext) {
-        try {
-          await audioContext.close();
-        } catch (error) {
-          console.warn(error);
-        }
-        audioContext = null;
-      }
-
-      analyser = null;
-      sampleBuffer = null;
-      recentFrequencies = [];
+      microphoneSource = null;
     }
 
-    function analyzeAudio() {
-      if (!analyser || !audioContext || !sampleBuffer) {
-        return;
-      }
-
-      analyser.getFloatTimeDomainData(sampleBuffer);
-
-      const frequency = detectPitch(
-        sampleBuffer,
-        audioContext.sampleRate,
-        65,
-        1200
-      );
-
-      if (!frequency) {
-        missedReadings++;
-
-        if (missedReadings >= 5) {
-          showNoSignal();
-        }
-
-        return;
-      }
-
-      missedReadings = 0;
-
-      /*
-       * Clear the smoothing window if the new reading is substantially
-       * different. This lets the display react faster when another string
-       * is played.
-       */
-      if (
-        recentFrequencies.length &&
-        Math.abs(
-          frequency -
-          recentFrequencies[recentFrequencies.length - 1]
-        ) / frequency > 0.10
-      ) {
-        recentFrequencies = [];
-      }
-
-      recentFrequencies.push(frequency);
-
-      if (recentFrequencies.length > 5) {
-        recentFrequencies.shift();
-      }
-
-      const smoothedFrequency = median(recentFrequencies);
-      displayPitch(smoothedFrequency);
-    }
-
-    /**
-     * YIN-style pitch detection.
-     *
-     * Returns a frequency in Hz, or null when no sufficiently clear pitch
-     * is found.
-     */
-    function detectPitch(buffer, sampleRate, minimumFrequency, maximumFrequency) {
-      let sumSquares = 0;
-
-      for (let i = 0; i < buffer.length; i++) {
-        sumSquares += buffer[i] * buffer[i];
-      }
-
-      const rms = Math.sqrt(sumSquares / buffer.length);
-
-      // Reject silence and very weak background noise.
-      if (rms < 0.01) {
-        return null;
-      }
-
-      const halfLength = Math.floor(buffer.length / 2);
-      const minimumTau = Math.max(
-        2,
-        Math.floor(sampleRate / maximumFrequency)
-      );
-      const maximumTau = Math.min(
-        halfLength - 1,
-        Math.floor(sampleRate / minimumFrequency)
-      );
-
-      const yin = new Float32Array(maximumTau + 1);
-
-      /*
-       * Difference function.
-       */
-      for (let tau = minimumTau; tau <= maximumTau; tau++) {
-        let difference = 0;
-
-        for (let i = 0; i < halfLength; i++) {
-          const delta = buffer[i] - buffer[i + tau];
-          difference += delta * delta;
-        }
-
-        yin[tau] = difference;
-      }
-
-      /*
-       * Cumulative mean normalized difference.
-       */
-      let runningSum = 0;
-
-      for (let tau = minimumTau; tau <= maximumTau; tau++) {
-        runningSum += yin[tau];
-
-        yin[tau] = runningSum === 0
-          ? 1
-          : yin[tau] * tau / runningSum;
-      }
-
-      const threshold = 0.12;
-      let selectedTau = -1;
-
-      for (let tau = minimumTau; tau < maximumTau; tau++) {
-        if (yin[tau] < threshold) {
-          while (
-            tau + 1 <= maximumTau &&
-            yin[tau + 1] < yin[tau]
-          ) {
-            tau++;
-          }
-
-          selectedTau = tau;
-          break;
-        }
-      }
-
-      if (selectedTau === -1) {
-        return null;
-      }
-
-      /*
-       * Parabolic interpolation improves the result beyond integer sample
-       * resolution.
-       */
-      let betterTau = selectedTau;
-
-      if (
-        selectedTau > minimumTau &&
-        selectedTau < maximumTau
-      ) {
-        const previous = yin[selectedTau - 1];
-        const current = yin[selectedTau];
-        const next = yin[selectedTau + 1];
-        const denominator =
-          2 * (previous - 2 * current + next);
-
-        if (denominator !== 0) {
-          betterTau += (previous - next) / denominator;
-        }
-      }
-
-      const frequency = sampleRate / betterTau;
-
-      if (
-        !Number.isFinite(frequency) ||
-        frequency < minimumFrequency ||
-        frequency > maximumFrequency
-      ) {
-        return null;
-      }
-
-      return frequency;
-    }
-
-    function displayPitch(frequency) {
-      const referencePitch =
-        Number(referencePitchInput.value) || 440;
-
-      /*
-       * MIDI 69 is A4. The formula works with any reference pitch selected
-       * by the user.
-       */
-      const exactMidi =
-        69 + 12 * Math.log2(frequency / referencePitch);
-
-      const midiNote = Math.round(exactMidi);
-      const noteIndex = positiveModulo(midiNote, 12);
-      const octave = Math.floor(midiNote / 12) - 1;
-      const noteName = noteNames[noteIndex] + octave;
-
-      const targetFrequency =
-        referencePitch * Math.pow(2, (midiNote - 69) / 12);
-
-      const cents =
-        1200 * Math.log2(frequency / targetFrequency);
-
-      noteElement.textContent = noteName;
-      frequencyElement.textContent =
-        frequency.toFixed(1) +
-        ' Hz · target ' +
-        targetFrequency.toFixed(1) +
-        ' Hz';
-
-      const roundedCents = Math.round(cents);
-      const sign = roundedCents > 0 ? '+' : '';
-
-      centsElement.textContent =
-        sign + roundedCents + ' cents';
-
-      const clampedCents = Math.max(-50, Math.min(50, cents));
-      needleElement.style.left = (50 + clampedCents) + '%';
-
-      const absoluteCents = Math.abs(cents);
-
-      if (absoluteCents <= 5) {
-        tuningStatusElement.textContent = 'In tune';
-        tuningStatusElement.className = 'tuning-status good';
-      } else if (cents < 0) {
-        tuningStatusElement.textContent = 'Tune up';
-        tuningStatusElement.className =
-          absoluteCents <= 15
-            ? 'tuning-status warning'
-            : 'tuning-status bad';
-      } else {
-        tuningStatusElement.textContent = 'Tune down';
-        tuningStatusElement.className =
-          absoluteCents <= 15
-            ? 'tuning-status warning'
-            : 'tuning-status bad';
-      }
-    }
-
-    function showNoSignal() {
-      recentFrequencies = [];
-
-      noteElement.textContent = '--';
-      frequencyElement.textContent = 'No stable pitch detected';
-      tuningStatusElement.textContent = 'Play one string';
-      tuningStatusElement.className = 'tuning-status';
-      centsElement.textContent = '0 cents';
-      needleElement.style.left = '50%';
-    }
-
-    function showError(message) {
-      messageElement.className = 'message bad';
-      messageElement.textContent = message;
-    }
-
-    function median(values) {
-      if (!values.length) {
-        return 0;
-      }
-
-      const sorted = values.slice().sort(function(a, b) {
-        return a - b;
+    if (microphoneStream) {
+      microphoneStream.getTracks().forEach(function(track) {
+        track.stop();
       });
 
-      const middle = Math.floor(sorted.length / 2);
+      microphoneStream = null;
+    }
 
-      if (sorted.length % 2) {
-        return sorted[middle];
+    if (audioContext) {
+      try {
+        await audioContext.close();
+      } catch (error) {
+        console.warn(error);
       }
 
-      return (sorted[middle - 1] + sorted[middle]) / 2;
+      audioContext = null;
     }
 
-    function positiveModulo(value, divisor) {
-      return ((value % divisor) + divisor) % divisor;
+    analyser = null;
+    sampleBuffer = null;
+    recentFrequencies = [];
+    lastDisplayedFrequency = null;
+  }
+
+  function analyzeAudio() {
+    if (!analyser || !audioContext || !sampleBuffer) {
+      return;
     }
-  </script>
+
+    analyser.getFloatTimeDomainData(sampleBuffer);
+
+    const referencePitch = getReferencePitch();
+
+    /*
+     * Use the half-semitone boundaries around A0 and C8. This allows
+     * the end notes to be detected even when they are slightly out
+     * of tune.
+     */
+    const minimumFrequency = midiToFrequency(
+      MIN_MIDI_NOTE - 0.5,
+      referencePitch
+    );
+
+    const maximumFrequency = midiToFrequency(
+      MAX_MIDI_NOTE + 0.5,
+      referencePitch
+    );
+
+    const frequency = detectPitch(
+      sampleBuffer,
+      audioContext.sampleRate,
+      minimumFrequency,
+      maximumFrequency
+    );
+
+    if (!frequency) {
+      missedReadings++;
+
+      if (missedReadings >= 5) {
+        showNoSignal();
+      }
+
+      return;
+    }
+
+    missedReadings = 0;
+
+    /*
+     * Clear smoothing when the pitch changes substantially so the
+     * display reacts quickly to a new note.
+     */
+    if (
+      recentFrequencies.length &&
+      Math.abs(
+        frequency -
+        recentFrequencies[recentFrequencies.length - 1]
+      ) / frequency > 0.10
+    ) {
+      recentFrequencies = [];
+    }
+
+    recentFrequencies.push(frequency);
+
+    if (recentFrequencies.length > 5) {
+      recentFrequencies.shift();
+    }
+
+    displayPitch(median(recentFrequencies));
+  }
+
+  /**
+   * YIN-style pitch detection.
+   *
+   * Supports the A0-C8 range, approximately 27.5-4186 Hz when
+   * reference A4 is 440 Hz.
+   */
+  function detectPitch(
+    buffer,
+    sampleRate,
+    minimumFrequency,
+    maximumFrequency
+  ) {
+    let sumSquares = 0;
+
+    for (let i = 0; i < buffer.length; i++) {
+      sumSquares += buffer[i] * buffer[i];
+    }
+
+    const rms = Math.sqrt(sumSquares / buffer.length);
+
+    // Reject silence and weak background noise.
+    if (rms < 0.005) {
+      return null;
+    }
+
+    const halfLength = Math.floor(buffer.length / 2);
+
+    const minimumTau = Math.max(
+      2,
+      Math.floor(sampleRate / maximumFrequency)
+    );
+
+    const maximumTau = Math.min(
+      halfLength - 1,
+      Math.floor(sampleRate / minimumFrequency)
+    );
+
+    if (minimumTau >= maximumTau) {
+      return null;
+    }
+
+    const yin = new Float32Array(maximumTau + 1);
+
+    /*
+     * Difference function. Calculate from tau 1 so that cumulative
+     * normalization and interpolation remain accurate at C8.
+     */
+    for (let tau = 1; tau <= maximumTau; tau++) {
+      let difference = 0;
+
+      for (let i = 0; i < halfLength; i++) {
+        const delta = buffer[i] - buffer[i + tau];
+        difference += delta * delta;
+      }
+
+      yin[tau] = difference;
+    }
+
+    /*
+     * Cumulative mean normalized difference.
+     */
+    yin[0] = 1;
+
+    let runningSum = 0;
+
+    for (let tau = 1; tau <= maximumTau; tau++) {
+      runningSum += yin[tau];
+
+      yin[tau] = runningSum === 0
+        ? 1
+        : yin[tau] * tau / runningSum;
+    }
+
+    const threshold = 0.15;
+    let selectedTau = -1;
+
+    for (
+      let tau = minimumTau;
+      tau < maximumTau;
+      tau++
+    ) {
+      if (yin[tau] < threshold) {
+        while (
+          tau + 1 <= maximumTau &&
+          yin[tau + 1] < yin[tau]
+        ) {
+          tau++;
+        }
+
+        selectedTau = tau;
+        break;
+      }
+    }
+
+    /*
+     * Some microphones and instruments do not produce a YIN minimum
+     * below the normal threshold. Use a conservative fallback when
+     * there is still a reasonably clear minimum.
+     */
+    if (selectedTau === -1) {
+      let bestValue = Infinity;
+
+      for (
+        let tau = minimumTau;
+        tau <= maximumTau;
+        tau++
+      ) {
+        if (yin[tau] < bestValue) {
+          bestValue = yin[tau];
+          selectedTau = tau;
+        }
+      }
+
+      if (bestValue > 0.25) {
+        return null;
+      }
+    }
+
+    /*
+     * Parabolic interpolation provides sub-sample resolution. This
+     * is especially important for high notes, whose periods may be
+     * only about 10 samples long.
+     */
+    let betterTau = selectedTau;
+
+    if (
+      selectedTau > 1 &&
+      selectedTau < maximumTau
+    ) {
+      const previous = yin[selectedTau - 1];
+      const current = yin[selectedTau];
+      const next = yin[selectedTau + 1];
+
+      const denominator =
+        2 * (previous - 2 * current + next);
+
+      if (denominator !== 0) {
+        const adjustment =
+          (previous - next) / denominator;
+
+        if (Number.isFinite(adjustment)) {
+          betterTau += adjustment;
+        }
+      }
+    }
+
+    const frequency = sampleRate / betterTau;
+
+    if (
+      !Number.isFinite(frequency) ||
+      frequency < minimumFrequency ||
+      frequency > maximumFrequency
+    ) {
+      return null;
+    }
+
+    return frequency;
+  }
+
+  function displayPitch(frequency) {
+    const referencePitch = getReferencePitch();
+
+    /*
+     * MIDI 69 is A4. Notes A0-C8 correspond to MIDI 21-108.
+     */
+    const exactMidi =
+      69 + 12 * Math.log2(frequency / referencePitch);
+
+    const midiNote = Math.round(exactMidi);
+
+    if (
+      midiNote < MIN_MIDI_NOTE ||
+      midiNote > MAX_MIDI_NOTE
+    ) {
+      return;
+    }
+
+    const noteIndex = positiveModulo(midiNote, 12);
+    const octave = Math.floor(midiNote / 12) - 1;
+
+    const names = notationSelect.value === 'flat'
+      ? flatNoteNames
+      : sharpNoteNames;
+
+    const noteName = names[noteIndex] + octave;
+
+    const targetFrequency = midiToFrequency(
+      midiNote,
+      referencePitch
+    );
+
+    const cents =
+      1200 * Math.log2(frequency / targetFrequency);
+
+    lastDisplayedFrequency = frequency;
+
+    noteElement.textContent = noteName;
+
+    frequencyElement.textContent =
+      formatFrequency(frequency) +
+      ' Hz · target ' +
+      formatFrequency(targetFrequency) +
+      ' Hz';
+
+    const roundedCents = Math.round(cents);
+    const sign = roundedCents > 0 ? '+' : '';
+
+    centsElement.textContent =
+      sign + roundedCents + ' cents';
+
+    const clampedCents = Math.max(
+      -50,
+      Math.min(50, cents)
+    );
+
+    needleElement.style.left =
+      (50 + clampedCents) + '%';
+
+    const absoluteCents = Math.abs(cents);
+
+    if (absoluteCents <= 5) {
+      tuningStatusElement.textContent = 'In tune';
+      tuningStatusElement.className =
+        'tuning-status good';
+    } else if (cents < 0) {
+      tuningStatusElement.textContent = 'Tune up';
+      tuningStatusElement.className =
+        absoluteCents <= 15
+          ? 'tuning-status warning'
+          : 'tuning-status bad';
+    } else {
+      tuningStatusElement.textContent = 'Tune down';
+      tuningStatusElement.className =
+        absoluteCents <= 15
+          ? 'tuning-status warning'
+          : 'tuning-status bad';
+    }
+  }
+
+  function getReferencePitch() {
+    const value = Number(referencePitchInput.value);
+
+    if (Number.isFinite(value) && value > 0) {
+      return value;
+    }
+
+    return 440;
+  }
+
+  function midiToFrequency(midiNote, referencePitch) {
+    return referencePitch *
+      Math.pow(2, (midiNote - 69) / 12);
+  }
+
+  function formatFrequency(frequency) {
+    return frequency < 100
+      ? frequency.toFixed(2)
+      : frequency.toFixed(1);
+  }
+
+  function showNoSignal() {
+    recentFrequencies = [];
+    lastDisplayedFrequency = null;
+
+    resetPitchDisplay('No stable pitch detected');
+
+    tuningStatusElement.textContent =
+      'Play a note from A0 to C8';
+  }
+
+  function resetPitchDisplay(frequencyMessage) {
+    noteElement.textContent = '--';
+    frequencyElement.textContent = frequencyMessage;
+    tuningStatusElement.textContent = '';
+    tuningStatusElement.className = 'tuning-status';
+    centsElement.textContent = '0 cents';
+    needleElement.style.left = '50%';
+  }
+
+  function showError(message) {
+    messageElement.className = 'message bad';
+    messageElement.textContent = message;
+  }
+
+  function median(values) {
+    if (!values.length) {
+      return 0;
+    }
+
+    const sorted = values.slice().sort(function(a, b) {
+      return a - b;
+    });
+
+    const middle = Math.floor(sorted.length / 2);
+
+    if (sorted.length % 2) {
+      return sorted[middle];
+    }
+
+    return (
+      sorted[middle - 1] + sorted[middle]
+    ) / 2;
+  }
+
+  function positiveModulo(value, divisor) {
+    return ((value % divisor) + divisor) % divisor;
+  }
+</script>
 </body>
 
 </html>
